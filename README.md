@@ -88,11 +88,4 @@ attrib -U +P "C:\...\폴더\*" /s /d
 - 캐시 삭제는 되돌릴 수 없지만 전부 재생성되는 항목이다 (npm 캐시는 다음 설치 시 재다운로드, 크래시 덤프는 진단용 잔재).
 - 실행 중 다른 프로그램이 쓰고 있는 파일은 건너뛴다 — 필요하면 브라우저·에디터를 닫고 재실행.
 
-## 실제 적용 기록 (2026-07-21)
-
-| 단계 | 결과 |
-|---|---|
-| 캐시 삭제 (CrashDumps 3.7 + npm-cache 6.5 + Temp 4.8 GB) | 여유 1.8 GB → 16.9 GB |
-| 이미지·캡처류 온라인화 (png/jpg/mhtml/mp4, 8,208 파일 / 24.7 GB) | 순차 처리 |
-
-로컬 점유 상위는 캠페인 페이지 캡처 아카이브(`03. CAMPAIGN NAME/02. MONITORING/ARCHIVE/backup(user_id)/*`, `10. Page Archive/4. CAMPAIGN NAME/backup(user_id)/*`, `251200-CAMPAIGN NAME/.../campaign_name_png/*`)와 `260610_shop_pf_pd_search_data` 의 추출 output CSV 였다.
+> 어디가 로컬을 먹는지는 환경마다 다르다. `--report` 로 먼저 상위 폴더·확장자를 확인한 뒤 대상을 정할 것.
