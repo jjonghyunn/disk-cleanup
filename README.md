@@ -42,7 +42,7 @@ python disk_cleanup.py --apply               # 둘 다 (RUN_* 상수 기준)
 | 상수 | 설명 |
 |---|---|
 | `ONEDRIVE_ROOT` | 스캔 시작 경로. **다른 PC 는 이 줄만 교체** |
-| `DEHYDRATE_EXTS` | 대상 확장자. `[]` 로 비우면 확장자 무관 전체 (최대 확보, 대신 열 때마다 다운로드) |
+| `DEHYDRATE_EXTS` | 대상 확장자. `[]` 로 비우면 확장자 무관 전체 (최대 확보, 대신 열 때마다 다운로드).<br>⚠ **여기 없는 확장자는 아무리 커도 영원히 대상이 안 된다** — `.csv` 가 빠져 있어 추출 결과 `output` 폴더들이 수 GB 를 계속 점유하고 있었다(2026-07-29 수정). `.xlsx`/`.json`/`.zip` 은 주석으로 준비돼 있으니 필요 시 해제 |
 | `DEHYDRATE_EXCLUDE_DIRS` | `.git`·`node_modules`·`.venv` 등 제외 — **git 저장소를 온라인화하면 git 이 매우 느려지고 깨질 수 있음** |
 | `DEHYDRATE_EXCLUDE_KEYWORDS` | 작업 중 폴더 제외용 (경로 substring, 대소문자 무시). 예: `["260721_"]` |
 | `DEHYDRATE_MIN_MB` | 이 크기 미만은 건너뜀 (기본 0.5MB) — 작은 파일은 효과 대비 재다운로드 번거로움만 큼 |
@@ -50,7 +50,7 @@ python disk_cleanup.py --apply               # 둘 다 (RUN_* 상수 기준)
 ### 캐시 삭제
 | 상수 | 설명 |
 |---|---|
-| `CACHE_TARGETS` | `(경로, 설명)` 목록. **폴더 자체는 유지하고 하위 항목만** 삭제. 주석으로 pip/playwright 예시 포함 |
+| `CACHE_TARGETS` | `(%LOCALAPPDATA% 하위 폴더명, 설명)` 목록. 절대경로를 적으면 그대로 사용. **폴더 자체는 유지하고 하위 항목만** 삭제.<br>기본: CrashDumps · npm-cache · Temp · pip\Cache. `ms-playwright` 는 지우면 `playwright install` 재실행이 필요해 주석 처리 |
 | `CACHE_PROTECT_KEYWORDS` | 경로에 이 문자열이 있으면 삭제 제외. 기본 `\claude` — **`Temp\claude` 는 실행 중인 Claude Code 세션 작업 파일이라 지우면 진행 중 작업이 끊긴다** (실제로 겪은 사고) |
 | `CACHE_MAX_AGE_DAYS` | 숫자를 넣으면 그보다 오래된 항목만 삭제 (`None` = 전부) |
 
@@ -80,6 +80,17 @@ attrib -U +P "C:\...\폴더\*" /s /d
 또는 탐색기에서 폴더 우클릭 → **"이 장치에 항상 유지"**. 개별 파일은 그냥 열면 자동으로 받아진다.
 
 ---
+
+## 알려진 함정 (2026-07-29 수정)
+
+- **캐시 삭제가 항상 `0.00 GB` 로 끝났다** — `clean_cache()` 가 `CACHE_TARGETS` 의 상대명을
+  `resolve_cache_target()` 없이 그대로 `os.path.isdir()` 에 넘겨, `Temp` 를 *현재 작업 폴더* 기준으로
+  찾다가 전부 "경로 없음" 으로 skip 했다. 실제로는 Temp 5.1GB / CrashDumps 0.67GB 가 남아 있었다.
+  → 수정 후 dry-run 에서 **6.42 GB** 로 정상 집계.
+- **온라인화했는데 여유 공간이 안 늘 때** — 두 경우다.
+  ① 대상이 이미 온라인 전용이었다 (로그의 "대상 N GB" 는 논리 크기라 실제 점유가 아님).
+  ② 그 파일이 **아직 클라우드에 업로드되지 않았다.** 업로드가 끝나야 로컬을 비울 수 있다.
+  구분법: 파일 속성에 `REPARSE_POINT`(0x400) 가 있으면 업로드 완료, 없으면 미완료.
 
 ## 주의
 

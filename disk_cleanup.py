@@ -1,5 +1,14 @@
 # disk_cleanup.py
-# 2026-07-21  Jonghyun Park w/ Claude
+# 2026-07-29  Jonghyun Park w/ Claude
+#
+# 변경 이력
+#   2026-07-29 : 캐시 삭제가 항상 0 GB 로 끝나던 버그 수정 + 온라인화 대상 확장.
+#     · clean_cache() 가 CACHE_TARGETS 의 상대명을 resolve_cache_target() 없이 그대로 썼다.
+#       그래서 'Temp' 를 현재 작업폴더 기준으로 찾다가 전부 "경로 없음" 으로 skip →
+#       실제로는 Temp 5.1GB / CrashDumps 0.67GB / npm 0.25GB 가 남아 있는데도 0.00 GB 보고.
+#     · DEHYDRATE_EXTS 에 .csv 추가 — 추출 결과 output 폴더들이 확장자 목록에 없어
+#       한 번도 온라인화 대상이 된 적이 없었다(측정 시 수 GB 상당).
+#     · CACHE_TARGETS 에 pip\Cache 활성화 (재설치 시 자동 복구되므로 안전).
 #
 # 로컬 디스크 공간 확보 도구 (Windows 전용)
 #   1) CACHE  : 재생성 가능한 캐시 폴더 내용물 삭제 (Temp / CrashDumps / npm-cache 등)
@@ -33,7 +42,13 @@ RUN_DEHYDRATE = True            # OneDrive 온라인화 수행
 ONEDRIVE_ROOT = ""
 
 # 온라인화할 확장자. 빈 리스트([]) 로 두면 확장자 무관 전체가 대상
-DEHYDRATE_EXTS = [".png", ".jpg", ".jpeg", ".gif", ".mhtml", ".mp4", ".mov"]
+#   ⚠ 여기 없는 확장자는 아무리 커도 영원히 대상이 안 된다. 실제로 .csv 가 빠져 있어
+#      추출 결과 output 폴더들(수 GB)이 계속 로컬 디스크를 차지하고 있었다 (2026-07-29 확인).
+#   · .csv  : extract_data 등의 결과물. 재생성 가능한 중간 산출물이라 온라인화해도 부담이 적다.
+#             (필요할 때 열면 자동 재다운로드 — 단 오프라인 상태면 못 읽으니 주의)
+#   · .xlsx : 열어 보는 빈도가 높아 기본 제외. 오래된 보고서까지 비우려면 주석 해제.
+DEHYDRATE_EXTS = [".png", ".jpg", ".jpeg", ".gif", ".mhtml", ".mp4", ".mov", ".csv"]
+# DEHYDRATE_EXTS += [".xlsx", ".json", ".zip"]
 
 # 이 폴더명이 경로에 들어가면 제외 (git 저장소·패키지 폴더를 온라인화하면 느려지고 깨짐)
 DEHYDRATE_EXCLUDE_DIRS = [".git", "node_modules", "__pycache__", ".venv", "venv", ".ipynb_checkpoints"]
@@ -50,8 +65,8 @@ CACHE_TARGETS = [
     ("CrashDumps",          "앱 크래시 덤프"),
     (r"npm-cache\_cacache", "npm 패키지 캐시"),
     ("Temp",                "임시 파일"),
-    # (r"pip\Cache",        "pip 캐시"),
-    # ("ms-playwright",     "playwright 브라우저"),
+    (r"pip\Cache",          "pip 캐시"),              # 지워도 다음 설치 때 자동 재다운로드
+    # ("ms-playwright",     "playwright 브라우저"),   # ⚠ 지우면 `playwright install` 재실행 필요
 ]
 
 # 캐시 폴더 안이라도 경로에 이 문자열이 있으면 삭제 제외 (대소문자 무시)
@@ -228,7 +243,11 @@ def too_new(path):
 def clean_cache(apply):
     log("\n[캐시 삭제]" + ("" if apply else "  (dry-run)"))
     freed = 0
-    for target, desc in CACHE_TARGETS:
+    for name_or_path, desc in CACHE_TARGETS:
+        # CACHE_TARGETS 는 "%LOCALAPPDATA% 하위 폴더명" 이므로 반드시 절대경로로 풀어서 쓴다.
+        # (예전엔 이 변환을 빠뜨려 상대명 'Temp' 를 현재 작업폴더 기준으로 찾다가
+        #  전부 "경로 없음" 으로 skip 됐다 — 캐시가 실제로는 수 GB 있는데도 0.00 GB 로 나옴)
+        target = resolve_cache_target(name_or_path)
         if not os.path.isdir(target):
             log(f"  - {desc}: 경로 없음 ({target})")
             continue
