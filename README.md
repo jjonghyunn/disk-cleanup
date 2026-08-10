@@ -1,5 +1,5 @@
 # disk_cleanup.py — 로컬 디스크 공간 확보  
-<sub>2026-07-30  Jonghyun Park w/ Claude</sub>  
+<sub>2026-08-10  Jonghyun Park w/ Claude</sub>  
 랩탑 C: 여유 공간이 부족할 때 ① 재생성 가능한 캐시를 지우고 ② OneDrive 파일을 "온라인 전용"으로 되돌려 로컬 점유를 비우는 Windows 전용 스크립트.
 
 ---
@@ -44,13 +44,13 @@ python disk_cleanup.py --apply               # 둘 다 (RUN_* 상수 기준)
 | `ONEDRIVE_ROOT` | 스캔 시작 경로. **빈 값 `""` 이면 자동 탐지** (env `OneDriveCommercial`→`OneDrive`→`OneDriveConsumer` → 홈의 `OneDrive*` 폴더). 계정이 여러 개이거나 하위 폴더만 대상일 때만 직접 지정 |
 | `DEHYDRATE_EXTS` | 대상 확장자. `[]` 로 비우면 확장자 무관 전체 (최대 확보, 대신 열 때마다 다운로드).<br>⚠ **여기 없는 확장자는 아무리 커도 영원히 대상이 안 된다** — `.csv` 가 빠져 있어 추출 결과 `output` 폴더들이 수 GB 를 계속 점유하고 있었다(2026-07-29 수정). `.xlsx`/`.json`/`.zip` 은 주석으로 준비돼 있으니 필요 시 해제 |
 | `DEHYDRATE_EXCLUDE_DIRS` | `.git`·`node_modules`·`.venv` 등 제외 — **git 저장소를 온라인화하면 git 이 매우 느려지고 깨질 수 있음** |
-| `DEHYDRATE_EXCLUDE_KEYWORDS` | 작업 중 폴더 제외용 (경로 substring, 대소문자 무시). 예: `["260721_"]` |
+| `DEHYDRATE_EXCLUDE_KEYWORDS` | 작업 중 폴더 제외용 (경로 substring, 대소문자 무시). 기본값은 `[]` (제외 없음). 예: `["작업중", "in_progress"]` |
 | `DEHYDRATE_MIN_MB` | 이 크기 미만은 건너뜀 (기본 0.5MB) — 작은 파일은 효과 대비 재다운로드 번거로움만 큼 |
 
 ### 캐시 삭제
 | 상수 | 설명 |
 |---|---|
-| `CACHE_TARGETS` | `(%LOCALAPPDATA% 하위 폴더명, 설명)` 목록. 절대경로를 적으면 그대로 사용. **폴더 자체는 유지하고 하위 항목만** 삭제.<br>기본: CrashDumps · npm-cache · Temp · pip\Cache. `ms-playwright` 는 지우면 `playwright install` 재실행이 필요해 주석 처리 |
+| `CACHE_TARGETS` | `(%LOCALAPPDATA% 하위 폴더명, 설명)` 목록. 절대경로를 적으면 그대로 사용. **폴더 자체는 유지하고 하위 항목만** 삭제.<br>기본: `CrashDumps` · `npm-cache\_cacache` · `Temp` · `pip\Cache`. `ms-playwright` 는 지우면 `playwright install` 재실행이 필요해 주석 처리 |
 | `CACHE_PROTECT_KEYWORDS` | 경로에 이 문자열이 있으면 삭제 제외. 기본 `\claude` — **`Temp\claude` 는 실행 중인 Claude Code 세션 작업 파일이라 지우면 진행 중 작업이 끊긴다** (실제로 겪은 사고) |
 | `CACHE_MAX_AGE_DAYS` | 숫자를 넣으면 그보다 오래된 항목만 삭제 (`None` = 전부) |
 
