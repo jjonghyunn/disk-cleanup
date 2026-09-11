@@ -1,5 +1,5 @@
 # disk_cleanup.py — 로컬 디스크 공간 확보  
-<sub>2026-08-10  Jonghyun Park w/ Claude</sub>  
+<sub>2026-09-11  Jonghyun Park w/ Claude</sub>  
 랩탑 C: 여유 공간이 부족할 때 ① 재생성 가능한 캐시를 지우고 ② OneDrive 파일을 "온라인 전용"으로 되돌려 로컬 점유를 비우는 Windows 전용 스크립트.
 
 ---
@@ -28,6 +28,25 @@ python disk_cleanup.py --apply               # 둘 다 (RUN_* 상수 기준)
 
 - **기본은 항상 dry-run** — `--apply` 없이는 어떤 파일도 건드리지 않는다.
 - 실행 로그는 스크립트 폴더에 `disk_cleanup_log_YYMMDD_HHMM.txt` 로 남는다 (`LOG_TO_FILE`).
+
+### 권장 실행 순서
+
+싼 것부터 쓰고, 모자랄 때만 비싼 것을 쓴다.
+
+```bash
+python disk_cleanup.py --report             # 1) 어디가 로컬을 먹는지 확인
+python disk_cleanup.py --cache              # 2) 캐시 삭제 목록 확인 (dry-run)
+python disk_cleanup.py --cache --apply      # 3) 캐시만 삭제 — 여기서 충분하면 끝
+python disk_cleanup.py --dehydrate          # 4) 아직 모자랄 때만, 먼저 dry-run
+python disk_cleanup.py --dehydrate --apply  # 5) 온라인화 실행
+```
+
+**`--apply` 단독(캐시+온라인화 동시)은 권장하지 않는다.** 자기 환경에서 무엇이 지워지는지 이미 아는 경우에만 쓸 것. 이유는 네 가지다.
+
+- **캐시 삭제는 공짜지만 온라인화는 아니다.** 캐시는 지워도 자동 재생성되고 네트워크를 안 쓴다. 반면 온라인화한 파일은 다시 쓰려면 전량 재다운로드다. 캐시만으로 목표 공간이 채워지면 OneDrive 는 건드릴 이유가 없는데, `--apply` 단독은 그 판단을 할 틈 없이 둘 다 실행한다.
+- **온라인화는 중간에 멈출 수 없다.** 대상 파일 하나마다 `attrib` 프로세스를 새로 띄우므로 수천 개면 수십 분이 걸리고, 처리된 파일을 되돌리는 기능은 스크립트에 없다 (수동으로 `attrib -U +P` 를 걸어야 한다).
+- **사고가 나면 원인이 섞인다.** 둘을 같이 돌린 뒤 프로그램이 이상해지면 `Temp` 삭제 탓인지 온라인화 탓인지 구분이 안 된다.
+- **효과 측정이 흐려진다.** 캐시 삭제는 즉시 반영되지만 OneDrive 의 로컬 회수는 비동기라 스크립트가 끝난 뒤에도 계속 진행된다. 마지막 "종료 여유 공간" 한 줄에 두 효과가 시차를 두고 섞인다.
 
 ---
 
