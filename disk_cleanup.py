@@ -1,7 +1,11 @@
 # disk_cleanup.py
-# 2026-07-29  Jonghyun Park w/ Claude
+# 2026-10-06  Jonghyun Park w/ Claude
 #
 # 변경 이력
+#   2026-10-06 : 온라인화가 긴 경로(260자+) 파일에서 조용히 실패하던 버그 수정.
+#     · attrib.exe 는 MAX_PATH 초과 경로에 "매개 변수 형식이 틀립니다" 를 내고도 종료코드 0 이라
+#       "완료 4,485/4,485" 로 보고됐지만 실제 확보는 0 GB 였다.
+#     · SetFileAttributesW 직접 호출로 교체 (python 은 longPathAware 라 긴 경로도 그대로 처리).
 #   2026-07-29 : 캐시 삭제가 항상 0 GB 로 끝나던 버그 수정 + 온라인화 대상 확장.
 #     · clean_cache() 가 CACHE_TARGETS 의 상대명을 resolve_cache_target() 없이 그대로 썼다.
 #       그래서 'Temp' 를 현재 작업폴더 기준으로 찾다가 전부 "경로 없음" 으로 skip →
@@ -12,7 +16,7 @@
 #
 # 로컬 디스크 공간 확보 도구 (Windows 전용)
 #   1) CACHE  : 재생성 가능한 캐시 폴더 내용물 삭제 (Temp / CrashDumps / npm-cache 등)
-#   2) DEHYDRATE : OneDrive 파일을 "온라인 전용"으로 전환 (attrib -P +U)
+#   2) DEHYDRATE : OneDrive 파일을 "온라인 전용"으로 전환 (PINNED 해제 + UNPINNED, = attrib -P +U)
 #                  → 클라우드에는 그대로 남고 로컬 점유만 0 이 됨. 더블클릭하면 다시 받아짐.
 #
 # 기본은 DRY-RUN. 실제 적용은 --apply.
@@ -26,7 +30,6 @@ import ctypes
 import glob
 import os
 import shutil
-import subprocess
 import sys
 from datetime import datetime, timedelta
 
@@ -140,6 +143,12 @@ def flush_log():
 
 def free_gb():
     return shutil.disk_usage(DRIVE).free / (1024 ** 3)
+
+
+_k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+_k32.GetFileAttributesW.argtypes = [ctypes.c_wchar_p]
+_k32.GetFileAttributesW.restype = ctypes.c_uint32
+_k32.SetFileAttributesW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32]
 
 
 def get_attrs(path):
@@ -307,6 +316,15 @@ def dehydrate_targets():
         yield e.path, size
 
 
+def set_unpinned(path):
+    """attrib -P +U 와 같은 효과를 API 로 직접 — attrib.exe 는 260자 넘는 경로에서
+    "매개 변수 형식이 틀립니다" 를 내고 아무것도 안 바꾼다(종료코드는 0)."""
+    attrs = _k32.GetFileAttributesW(path)
+    if attrs == GET_FILE_ATTRIBUTES_FAILED:
+        return False
+    return bool(_k32.SetFileAttributesW(path, (attrs & ~FILE_ATTRIBUTE_PINNED) | FILE_ATTRIBUTE_UNPINNED))
+
+
 def dehydrate(apply):
     log("\n[OneDrive 온라인화]" + ("" if apply else "  (dry-run)"))
     if not os.path.isdir(ONEDRIVE_ROOT):
@@ -326,10 +344,8 @@ def dehydrate(apply):
     ok = 0
     start_free = free_gb()
     for i, (path, _) in enumerate(targets, 1):
-        # -P: "항상 유지" 핀 해제 / +U: 온라인 전용 표시 → OneDrive 가 로컬 내용 회수
-        rc = subprocess.run(["attrib", "-P", "+U", path],
-                            capture_output=True, shell=False).returncode
-        if rc == 0:
+        # PINNED 해제 + UNPINNED 설정 (= attrib -P +U) → OneDrive 가 로컬 내용 회수
+        if set_unpinned(path):
             ok += 1
         if i % PROGRESS_EVERY == 0:
             log(f"    {i:,}/{len(targets):,} 처리, 여유 {free_gb():,.2f} GB")

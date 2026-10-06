@@ -1,5 +1,5 @@
 # disk_cleanup.py — 로컬 디스크 공간 확보  
-<sub>2026-09-11  Jonghyun Park w/ Claude</sub>  
+<sub>2026-10-06  Jonghyun Park w/ Claude</sub>  
 랩탑 C: 여유 공간이 부족할 때 ① 재생성 가능한 캐시를 지우고 ② OneDrive 파일을 "온라인 전용"으로 되돌려 로컬 점유를 비우는 Windows 전용 스크립트.
 
 ---
@@ -84,7 +84,7 @@ python disk_cleanup.py --dehydrate --apply  # 5) 온라인화 실행
 |---|---|
 | `--report` | 로컬에 내려와 있는(hydrate 된) 파일만 집계 → 상위 폴더·확장자 랭킹 출력. 변경 없음 |
 | 캐시 삭제 | `CACHE_TARGETS` 하위 항목 삭제. 사용 중이라 못 지우는 파일은 자동 skip |
-| 온라인화 | 조건에 맞는 파일마다 `attrib -P +U` 실행, `PROGRESS_EVERY` 마다 진행률·여유 공간 출력 |
+| 온라인화 | 조건에 맞는 파일마다 `attrib -P +U` 와 같은 속성 변경(`SetFileAttributesW` 직접 호출), `PROGRESS_EVERY` 마다 진행률·여유 공간 출력 |
 
 파일 상태 판별은 Windows 파일 속성 비트로 한다 — `FILE_ATTRIBUTE_OFFLINE(0x1000)` / `RECALL_ON_DATA_ACCESS(0x400000)` 가 있으면 이미 온라인 전용이라 대상에서 제외, `PINNED(0x80000)` 는 `-P` 로 해제해야 온라인화가 먹는다.
 
@@ -110,6 +110,16 @@ attrib -U +P "C:\...\폴더\*" /s /d
   ① 대상이 이미 온라인 전용이었다 (로그의 "대상 N GB" 는 논리 크기라 실제 점유가 아님).
   ② 그 파일이 **아직 클라우드에 업로드되지 않았다.** 업로드가 끝나야 로컬을 비울 수 있다.
   구분법: 파일 속성에 `REPARSE_POINT`(0x400) 가 있으면 업로드 완료, 없으면 미완료.
+
+## 알려진 함정 (2026-10-06 수정)
+
+- **온라인화가 "완료 N/N" 인데 확보 0 GB** — 대상 처리를 `attrib.exe` 에 맡겼는데, `attrib` 은 **260자(MAX_PATH)
+  넘는 경로**에서 "매개 변수 형식이 틀립니다" 를 내고 아무것도 바꾸지 않으면서 **종료코드는 0** 을 돌려준다.
+  캡처 파일은 SharePoint 라이브러리 경로가 길어 대부분 여기에 걸렸다(4,485개 처리 보고, 실제 확보 -0.06 GB).
+  → `SetFileAttributesW` 직접 호출로 교체. python 은 longPathAware 라 긴 경로도 그대로 처리된다. 수정 후 약 9 GB 확보.
+- **python 이 보는 속성값은 탐색기·PowerShell 과 다르다** — 자리표시자 위장(placeholder disguise) 때문에 python 에선
+  `REPARSE_POINT`(0x400)·`OFFLINE`(0x1000) 비트가 빠져 보인다 (같은 파일이 PowerShell `0x501620`, python `0x500020`).
+  업로드 완료 여부를 판별할 땐 PowerShell `(Get-Item -LiteralPath …).Attributes` 로 볼 것.
 
 ## 주의
 
