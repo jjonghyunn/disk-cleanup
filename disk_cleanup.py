@@ -1,18 +1,15 @@
 # disk_cleanup.py
-# 2026-10-06  Jonghyun Park w/ Claude
+# 2026-10-27  Jonghyun Park w/ Claude
 #
 # 변경 이력
+#   2026-10-27 : 캐시 정리 중 Temp 파일이 목록 조회 직후 사라지면 FileNotFoundError 로 전체가 죽던 버그 수정.
+#     · clean_cache() 의 크기 측정(getsize)을 try 로 감싸 사라진 항목은 skip.
+#     · CACHE_PROTECT_KEYWORDS 에 gen_py 추가 — 스케줄 실행이 Outlook(win32com) 작업과 겹쳐도 캐시를 안 지우게.
 #   2026-10-06 : 온라인화가 긴 경로(260자+) 파일에서 조용히 실패하던 버그 수정.
 #     · attrib.exe 는 MAX_PATH 초과 경로에 "매개 변수 형식이 틀립니다" 를 내고도 종료코드 0 이라
 #       "완료 4,485/4,485" 로 보고됐지만 실제 확보는 0 GB 였다.
 #     · SetFileAttributesW 직접 호출로 교체 (python 은 longPathAware 라 긴 경로도 그대로 처리).
-#   2026-07-29 : 캐시 삭제가 항상 0 GB 로 끝나던 버그 수정 + 온라인화 대상 확장.
-#     · clean_cache() 가 CACHE_TARGETS 의 상대명을 resolve_cache_target() 없이 그대로 썼다.
-#       그래서 'Temp' 를 현재 작업폴더 기준으로 찾다가 전부 "경로 없음" 으로 skip →
-#       실제로는 Temp 5.1GB / CrashDumps 0.67GB / npm 0.25GB 가 남아 있는데도 0.00 GB 보고.
-#     · DEHYDRATE_EXTS 에 .csv 추가 — 추출 결과 output 폴더들이 확장자 목록에 없어
-#       한 번도 온라인화 대상이 된 적이 없었다(측정 시 수 GB 상당).
-#     · CACHE_TARGETS 에 pip\Cache 활성화 (재설치 시 자동 복구되므로 안전).
+#   (이전 버전 이력은 git history / GitHub Releases 참조 — 헤더에는 최근 2개 항목만 남긴다)
 #
 # 로컬 디스크 공간 확보 도구 (Windows 전용)
 #   1) CACHE  : 재생성 가능한 캐시 폴더 내용물 삭제 (Temp / CrashDumps / npm-cache 등)
@@ -74,7 +71,8 @@ CACHE_TARGETS = [
 
 # 캐시 폴더 안이라도 경로에 이 문자열이 있으면 삭제 제외 (대소문자 무시)
 # ⚠ Temp\claude 는 실행 중인 Claude Code 세션의 작업 파일 — 지우면 진행 중 작업이 끊김
-CACHE_PROTECT_KEYWORDS = [r"\claude"]
+# ⚠ Temp\gen_py 는 win32com(Outlook 메일 작업) 캐시 — 정리 중 메일 작업이 돌면 COM 호출이 꼬일 수 있음
+CACHE_PROTECT_KEYWORDS = [r"\claude", r"\gen_py"]
 
 # 숫자를 넣으면 그보다 오래된 항목만 삭제 (None = 전부)
 CACHE_MAX_AGE_DAYS = None
@@ -272,7 +270,11 @@ def clean_cache(apply):
             if protected(child) or too_new(child):
                 log(f"      skip(보호): {name}")
                 continue
-            before = dir_size(child) if os.path.isdir(child) else os.path.getsize(child)
+            # listdir 이후 다른 프로세스가 지운 임시파일이면 getsize 가 FileNotFoundError → 건너뛴다
+            try:
+                before = dir_size(child) if os.path.isdir(child) else os.path.getsize(child)
+            except OSError:
+                continue
             try:
                 if os.path.isdir(child):
                     shutil.rmtree(child, ignore_errors=True)
