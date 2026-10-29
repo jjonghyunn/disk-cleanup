@@ -1,14 +1,12 @@
 # disk_cleanup.py
-# 2026-10-27  Jonghyun Park w/ Claude
+# 2026-10-29  Jonghyun Park w/ Claude
 #
 # 변경 이력
+#   2026-10-29 : CACHE_PROTECT_RECENT 추가 — 최근 6시간 안에 수정된 Temp\scoped_dir*(Selenium headless Chrome
+#     임시 프로필)는 삭제 제외. 정기 정리가 브라우저 자동화(Selenium) 실행과 겹치면 실행 중인 Chrome 프로필을 지울 수 있었다.
 #   2026-10-27 : 캐시 정리 중 Temp 파일이 목록 조회 직후 사라지면 FileNotFoundError 로 전체가 죽던 버그 수정.
 #     · clean_cache() 의 크기 측정(getsize)을 try 로 감싸 사라진 항목은 skip.
 #     · CACHE_PROTECT_KEYWORDS 에 gen_py 추가 — 스케줄 실행이 Outlook(win32com) 작업과 겹쳐도 캐시를 안 지우게.
-#   2026-10-06 : 온라인화가 긴 경로(260자+) 파일에서 조용히 실패하던 버그 수정.
-#     · attrib.exe 는 MAX_PATH 초과 경로에 "매개 변수 형식이 틀립니다" 를 내고도 종료코드 0 이라
-#       "완료 4,485/4,485" 로 보고됐지만 실제 확보는 0 GB 였다.
-#     · SetFileAttributesW 직접 호출로 교체 (python 은 longPathAware 라 긴 경로도 그대로 처리).
 #   (이전 버전 이력은 git history / GitHub Releases 참조 — 헤더에는 최근 2개 항목만 남긴다)
 #
 # 로컬 디스크 공간 확보 도구 (Windows 전용)
@@ -73,6 +71,11 @@ CACHE_TARGETS = [
 # ⚠ Temp\claude 는 실행 중인 Claude Code 세션의 작업 파일 — 지우면 진행 중 작업이 끊김
 # ⚠ Temp\gen_py 는 win32com(Outlook 메일 작업) 캐시 — 정리 중 메일 작업이 돌면 COM 호출이 꼬일 수 있음
 CACHE_PROTECT_KEYWORDS = [r"\claude", r"\gen_py"]
+
+# 경로에 이 문자열이 있고 최근 N시간 안에 수정됐으면 삭제 제외 (그보다 오래된 건 잔재로 보고 삭제)
+# ⚠ Temp\scoped_dir* 는 Selenium headless Chrome 의 임시 프로필 — 캡처 실행 중에 지우면
+#   그 Chrome 이 죽어 페이지가 timeout/error 로 빠진다. 완료된 실행의 잔재는 계속 정리되도록 시간으로 구분.
+CACHE_PROTECT_RECENT = {r"\scoped_dir": 6}
 
 # 숫자를 넣으면 그보다 오래된 항목만 삭제 (None = 전부)
 CACHE_MAX_AGE_DAYS = None
@@ -234,7 +237,17 @@ def dir_size(path):
 
 def protected(path):
     low = path.lower()
-    return any(k.lower() in low for k in CACHE_PROTECT_KEYWORDS)
+    if any(k.lower() in low for k in CACHE_PROTECT_KEYWORDS):
+        return True
+    for k, hours in CACHE_PROTECT_RECENT.items():
+        if k.lower() in low:
+            try:
+                mtime = datetime.fromtimestamp(os.path.getmtime(path))
+            except OSError:
+                return False
+            if mtime > datetime.now() - timedelta(hours=hours):
+                return True
+    return False
 
 
 def too_new(path):

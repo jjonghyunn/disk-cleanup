@@ -1,5 +1,5 @@
 # disk_cleanup.py — 로컬 디스크 공간 확보  
-<sub>2026-10-27  Jonghyun Park w/ Claude</sub>  
+<sub>2026-10-29  Jonghyun Park w/ Claude</sub>  
 랩탑 C: 여유 공간이 부족할 때 ① 재생성 가능한 캐시를 지우고 ② OneDrive 파일을 "온라인 전용"으로 되돌려 로컬 점유를 비우는 Windows 전용 스크립트.
 
 ---
@@ -52,7 +52,7 @@ python disk_cleanup.py --dehydrate --apply  # 5) 온라인화 실행
 
 위 순서로 한 번 돌려 보고 지워지는 대상을 확인했다면, `--apply` 를 작업 스케줄러에 하루 1~2회 걸어 두는 것도 방법이다.
 
-- **브라우저 자동화(Selenium·Playwright 캡처 등)가 도는 시간대는 피한다.** `CACHE_MAX_AGE_DAYS = None` 이면 방금 만든 폴더도 지우므로, 실행 중인 Chrome 임시 프로필을 지워 세션 생성 에러(`SessionNotCreatedException` 류)를 낼 수 있다. 자동화 작업이 모두 끝난 직후나 시작 전으로 잡을 것.
+- **브라우저 자동화(Selenium·Playwright 캡처 등)가 도는 시간대는 피한다.** `CACHE_MAX_AGE_DAYS = None` 이면 방금 만든 폴더도 지우므로, 실행 중인 Chrome 임시 프로필을 지워 세션 생성 에러(`SessionNotCreatedException` 류)를 낼 수 있다. 자동화 작업이 모두 끝난 직후나 시작 전으로 잡을 것. v1.3 부터는 최근 6시간 안에 수정된 `Temp\scoped_dir*`(Selenium Chrome 임시 프로필)는 기본으로 지우지 않지만(`CACHE_PROTECT_RECENT`), Playwright 등 다른 경로의 프로필은 보호하지 않으니 시간대 분리가 여전히 안전하다.
 - 온라인화는 **업로드가 끝난 파일에만** 효과가 있다. 방금 만든 파일은 다음 회차에 회수된다.
 - 자동화가 Temp 에 남기는 잔재는 생각보다 크다 — 측정 사례에서 Temp 가 하루 1.5 GB 이상 늘었고, 같은 기간 캡처 산출물 증가분(약 0.65 GB)보다 컸다.
 - 실행 파일은 `pythonw.exe` 로 지정하면 콘솔 창 없이 돈다. 결과는 로그 파일로 확인.
@@ -80,6 +80,7 @@ python disk_cleanup.py --dehydrate --apply  # 5) 온라인화 실행
 |---|---|
 | `CACHE_TARGETS` | `(%LOCALAPPDATA% 하위 폴더명, 설명)` 목록. 절대경로를 적으면 그대로 사용. **폴더 자체는 유지하고 하위 항목만** 삭제.<br>기본: `CrashDumps` · `npm-cache\_cacache` · `Temp` · `pip\Cache`. `ms-playwright` 는 지우면 `playwright install` 재실행이 필요해 주석 처리 |
 | `CACHE_PROTECT_KEYWORDS` | 경로에 이 문자열이 있으면 삭제 제외. 기본 `\claude`, `\gen_py` — **`Temp\claude` 는 실행 중인 Claude Code 세션 작업 파일이라 지우면 진행 중 작업이 끊긴다** (실제로 겪은 사고). `Temp\gen_py` 는 win32com(Outlook 자동화 등) 캐시라, 정기 실행이 그런 작업과 겹쳐도 안 지우도록 제외 |
+| `CACHE_PROTECT_RECENT` | `{경로 문자열: 시간}`. 경로에 문자열이 있고 **최근 N시간 안에 수정**됐으면 삭제 제외, 더 오래된 건 끝난 실행의 잔재로 보고 삭제. 기본 `{\scoped_dir: 6}` — Selenium headless Chrome 임시 프로필이라, 정리가 브라우저 자동화 실행과 겹치면 실행 중인 Chrome 이 죽어 작업이 timeout/에러로 빠진다 |
 | `CACHE_MAX_AGE_DAYS` | 숫자를 넣으면 그보다 오래된 항목만 삭제 (`None` = 전부) |
 
 ### 공통
